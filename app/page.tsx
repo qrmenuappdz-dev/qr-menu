@@ -1,14 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { db, auth } from './firebase';
 import { collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { QRCodeSVG } from 'qrcode.react';
+import { useSearchParams } from 'next/navigation';
 
-export default function Home() {
+function MainApp() {
+  const searchParams = useSearchParams();
+  const restaurantParam = searchParams.get('restaurant');
+
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'admin' | 'owner' | 'customer'>('customer');
+  const [activeTab, setActiveTab] = useState<'admin' | 'owner' | 'customer'>(restaurantParam ? 'customer' : 'customer');
   
   // Auth Form State
   const [email, setEmail] = useState('');
@@ -18,7 +22,7 @@ export default function Home() {
 
   // App Data
   const [restaurants, setRestaurants] = useState<any[]>([]);
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('');
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>(restaurantParam || '');
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [currentRestaurantData, setCurrentRestaurantData] = useState<any>(null);
   
@@ -54,33 +58,30 @@ export default function Home() {
           setActiveTab('admin');
         } else {
           setActiveTab('owner');
-          // جلب بيانات المطعم بالـ UID أو بالإيميل لضمان ظهور الـ QR Code مباشرة
           let resDoc = await getDoc(doc(db, "restaurants", currentUser.uid));
           if (resDoc.exists()) {
             setCurrentRestaurantData({ id: resDoc.id, ...resDoc.data() });
-            setSelectedRestaurantId(resDoc.id);
+            if (!restaurantParam) setSelectedRestaurantId(resDoc.id);
           } else {
             const q = query(collection(db, "restaurants"), where("ownerEmail", "==", currentUser.email));
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty) {
               const docData = querySnapshot.docs[0];
               setCurrentRestaurantData({ id: docData.id, ...docData.data() });
-              setSelectedRestaurantId(docData.id);
+              if (!restaurantParam) setSelectedRestaurantId(docData.id);
             }
           }
         }
       }
     });
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const restaurantParam = searchParams.get('restaurant');
     if (restaurantParam) {
       setSelectedRestaurantId(restaurantParam);
       setActiveTab('customer');
     }
 
     return () => unsubscribe();
-  }, []);
+  }, [restaurantParam]);
 
   const fetchRestaurants = async () => {
     try {
@@ -90,9 +91,6 @@ export default function Home() {
         items.push({ id: document.id, ...document.data() });
       });
       setRestaurants(items);
-      if (items.length > 0 && !selectedRestaurantId) {
-        setSelectedRestaurantId(items[0].id);
-      }
     } catch (e) {
       console.error(e);
     }
@@ -325,7 +323,7 @@ export default function Home() {
     <main className="min-h-screen bg-gray-50 text-gray-800 p-4" dir="rtl">
       <nav className="flex justify-between items-center bg-white p-4 shadow rounded-xl mb-6">
         <h1 className="text-xl font-bold text-orange-600">
-          {activeResForCustomer ? activeResForCustomer.name : 'منيو المطاعم الرقمي'}
+          {activeResForCustomer && restaurantParam ? activeResForCustomer.name : 'منيو المطاعم الرقمي'}
         </h1>
         <div className="flex gap-2 items-center">
           {user ? (
@@ -335,7 +333,7 @@ export default function Home() {
                   onClick={() => setActiveTab(activeTab === 'admin' ? 'customer' : 'admin')} 
                   className="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-bold"
                 >
-                  {activeTab === 'admin' ? 'عرض المنيو' : 'لوحة تحكم الأدمن'}
+                  {activeTab === 'admin' ? 'لوحة المنيو' : 'لوحة تحكم الأدمن'}
                 </button>
               )}
               <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-bold">خروج</button>
@@ -383,47 +381,62 @@ export default function Home() {
 
       {activeTab === 'customer' && (
         <div>
-          {activeResForCustomer && activeResForCustomer.isOrderingActive === false && (
-            <div className="bg-red-100 border-r-4 border-red-500 text-red-700 p-4 rounded-lg mb-4 text-center font-bold">
-              تنبيه: عذراً، خدمة الطلب المباشر من الطاولة متوقفة حالياً في هذا المطعم.
+          {/* واجهة ترحيبية عامة في حال لم يتم مسح الرمز أو الدخول عبر رابط مطعم */}
+          {!restaurantParam && user?.email !== ADMIN_EMAIL && !currentRestaurantData ? (
+            <div className="max-w-xl mx-auto text-center bg-white p-10 rounded-2xl shadow border mt-20">
+              <h2 className="text-3xl font-bold text-orange-600 mb-4">مرحباً بك في منصة المنيو الرقمي 🍽️</h2>
+              <p className="text-gray-600 mb-6 text-lg">
+                هذه المنصة مخصصة لتقديم قوائم الطعام الإلكترونية. لعرض منيو أي مطعم، يرجى مسح رمز الاستجابة السريعة (QR Code) الموجود على الطاولة.
+              </p>
+              <div className="p-4 bg-orange-50 rounded-xl border border-orange-200 text-orange-800 text-sm">
+                هل أنت صاحب مطعم؟ يمكنك تسجيل الدخول من الزاوية العلوية لإدارة منيو مطعمك واستخراج الـ QR الخاص بك.
+              </div>
             </div>
-          )}
+          ) : (
+            <div>
+              {activeResForCustomer && activeResForCustomer.isOrderingActive === false && (
+                <div className="bg-red-100 border-r-4 border-red-500 text-red-700 p-4 rounded-lg mb-4 text-center font-bold">
+                  تنبيه: عذراً، خدمة الطلب المباشر من الطاولة متوقفة حالياً في هذا المطعم.
+                </div>
+              )}
 
-          <div className="flex gap-2 overflow-x-auto pb-4 mb-4">
-            <button onClick={() => setSelectedCategory('الكل')} className={`px-4 py-2 rounded-full text-sm font-medium ${selectedCategory === 'الكل' ? 'bg-orange-600 text-white' : 'bg-white shadow'}`}>الكل</button>
-            {customCategories.map((cat) => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-full text-sm font-medium ${selectedCategory === cat ? 'bg-orange-600 text-white' : 'bg-white shadow'}`}>{cat}</button>
-            ))}
-          </div>
+              <div className="flex gap-2 overflow-x-auto pb-4 mb-4">
+                <button onClick={() => setSelectedCategory('الكل')} className={`px-4 py-2 rounded-full text-sm font-medium ${selectedCategory === 'الكل' ? 'bg-orange-600 text-white' : 'bg-white shadow'}`}>الكل</button>
+                {customCategories.map((cat) => (
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-full text-sm font-medium ${selectedCategory === cat ? 'bg-orange-600 text-white' : 'bg-white shadow'}`}>{cat}</button>
+                ))}
+              </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pb-28">
-            {dishes
-              .filter(d => selectedCategory === 'الكل' || d.category === selectedCategory)
-              .map(dish => (
-                <div key={dish.id} className="bg-white p-4 rounded-xl shadow border">
-                  <img src={dish.imageFile} alt={dish.name} className="w-full h-40 object-cover rounded-lg mb-3" />
-                  <h3 className="font-bold text-lg">{dish.name}</h3>
-                  <p className="text-gray-500 text-sm mb-2">{dish.desc}</p>
-                  <div className="flex justify-between items-center mt-4">
-                    <span className="text-orange-600 font-bold">{dish.price} د.ج</span>
-                    {activeResForCustomer?.isOrderingActive !== false && (
-                      <button onClick={() => setCart([...cart, dish])} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm">إضافة للطلب +</button>
-                    )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pb-28">
+                {dishes
+                  .filter(d => selectedCategory === 'الكل' || d.category === selectedCategory)
+                  .map(dish => (
+                    <div key={dish.id} className="bg-white p-4 rounded-xl shadow border">
+                      <img src={dish.imageFile} alt={dish.name} className="w-full h-40 object-cover rounded-lg mb-3" />
+                      <h3 className="font-bold text-lg">{dish.name}</h3>
+                      <p className="text-gray-500 text-sm mb-2">{dish.desc}</p>
+                      <div className="flex justify-between items-center mt-4">
+                        <span className="text-orange-600 font-bold">{dish.price} د.ج</span>
+                        {activeResForCustomer?.isOrderingActive !== false && (
+                          <button onClick={() => setCart([...cart, dish])} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm">إضافة للطلب +</button>
+                        )}
+                      </div>
+                    </div>
+                ))}
+              </div>
+
+              {cart.length > 0 && activeResForCustomer?.isOrderingActive !== false && (
+                <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg z-50">
+                  <div className="max-w-xl mx-auto flex flex-col gap-2">
+                    <div className="flex justify-between items-center font-bold text-md">
+                      <span>سلة الطلبات ({cart.length} منتجات)</span>
+                      <span className="text-orange-600">المجموع: {calculateTotal()} د.ج</span>
+                    </div>
+                    <input type="text" placeholder="رقم الطاولة (مثال: 05)" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="border p-2 rounded-lg text-sm" />
+                    <button onClick={handleSendOrder} className="bg-green-600 text-white p-2 rounded-lg font-bold">تأكيد وإرسال الطلب ({calculateTotal()} د.ج)</button>
                   </div>
                 </div>
-            ))}
-          </div>
-
-          {cart.length > 0 && activeResForCustomer?.isOrderingActive !== false && (
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg z-50">
-              <div className="max-w-xl mx-auto flex flex-col gap-2">
-                <div className="flex justify-between items-center font-bold text-md">
-                  <span>سلة الطلبات ({cart.length} منتجات)</span>
-                  <span className="text-orange-600">المجموع: {calculateTotal()} د.ج</span>
-                </div>
-                <input type="text" placeholder="رقم الطاولة (مثال: 05)" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="border p-2 rounded-lg text-sm" />
-                <button onClick={handleSendOrder} className="bg-green-600 text-white p-2 rounded-lg font-bold">تأكيد وإرسال الطلب ({calculateTotal()} د.ج)</button>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -533,5 +546,13 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="text-center mt-20 font-bold">جاري التحميل...</div>}>
+      <MainApp />
+    </Suspense>
   );
 }
