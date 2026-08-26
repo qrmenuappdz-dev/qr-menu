@@ -18,6 +18,7 @@ function MainApp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [restaurantNameInput, setRestaurantNameInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState(''); // <--- خانة رقم الهاتف الجديدة
   const [isRegistering, setIsRegistering] = useState(false);
 
   // App Data
@@ -168,17 +169,18 @@ function MainApp() {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
 
-        // 2. تسجيل المطعم بحالة 'pending' حصرياً لكي لا يدخل مباشرة
+        // 2. تسجيل المطعم بحالة 'pending' مع حفظ رقم الهاتف
         await setDoc(doc(db, "restaurants", newUser.uid), {
           name: restaurantNameInput,
           ownerEmail: email,
+          phone: phoneInput, // <--- حفظ رقم الهاتف في قاعدة البيانات
           isOrderingActive: true,
           status: 'pending', 
           categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
           createdAt: Date.now()
         });
 
-        // 3. إجبار الحساب الجديد على الخروج فوراً لكي ينتظر موافقة الأدمن
+        // 3. إجبار الحساب الجديد على الخروج فوراً ليطابق رغبتك في عدم الدخول المباشر
         await signOut(auth);
         setUser(null);
         
@@ -187,6 +189,7 @@ function MainApp() {
         setEmail('');
         setPassword('');
         setRestaurantNameInput('');
+        setPhoneInput('');
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -208,6 +211,7 @@ function MainApp() {
       await addDoc(collection(db, "restaurants"), {
         name: newRestaurantName,
         ownerEmail: ownerEmailForRes,
+        phone: '',
         isOrderingActive: true,
         status: 'active', // الأدمين يضيفه مباشرة كمفعل
         categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
@@ -406,6 +410,15 @@ function MainApp() {
                   <div>
                     <h3 className="font-bold text-lg text-orange-600">{res.name}</h3>
                     <p className="text-xs text-gray-500">المالك: {res.ownerEmail || 'غير محدد'}</p>
+                    {/* عرض رقم الهاتف وزر مراسلة واتساب */}
+                    <p className="text-xs text-gray-700 font-bold mt-1">
+                      الهاتف: <a href={`tel:${res.phone}`} className="text-blue-600 underline">{res.phone || 'غير مسجل'}</a>
+                      {res.phone && (
+                        <a href={`https://wa.me/213${res.phone.replace(/^0/, '')}`} target="_blank" rel="noopener noreferrer" className="mr-2 text-green-600">
+                          💬 واتساب
+                        </a>
+                      )}
+                    </p>
                     <p className="text-xs mt-1">
                       حالة الحساب: <span className={`font-bold ${res.status === 'active' ? 'text-green-600' : 'text-yellow-600'}`}>{res.status === 'active' ? 'مفعل ✅' : 'قيد الانتظار (في انتظار الدفع) ⏳'}</span>
                     </p>
@@ -498,7 +511,10 @@ function MainApp() {
           </h2>
           <form onSubmit={handleAuth} className="flex flex-col gap-3">
             {isRegistering && (
-              <input type="text" placeholder="اسم المطعم" value={restaurantNameInput} onChange={(e) => setRestaurantNameInput(e.target.value)} className="border p-2 rounded-lg" required />
+              <>
+                <input type="text" placeholder="اسم المطعم" value={restaurantNameInput} onChange={(e) => setRestaurantNameInput(e.target.value)} className="border p-2 rounded-lg" required />
+                <input type="tel" placeholder="رقم الهاتف (للتواصل عبر بريدي موب)" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} className="border p-2 rounded-lg" required />
+              </>
             )}
             <input type="email" placeholder="البريد الإلكتروني" value={email} onChange={(e) => setEmail(e.target.value)} className="border p-2 rounded-lg" required />
             <input type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} className="border p-2 rounded-lg" required />
@@ -581,14 +597,14 @@ function MainApp() {
             <h2 className="text-xl font-bold mb-4">الطلبات الواردة لطاولاتك ({orders.length})</h2>
             <div className="space-y-3">
               {orders.map(order => (
-                <key={order.id} className="border p-4 rounded-lg bg-gray-50 flex justify-between items-center">
+                <div key={order.id} className="border p-4 rounded-lg bg-gray-50 flex justify-between items-center">
                   <div>
                     <p className="font-bold">طاولة رقم: {order.tableNumber}</p>
                     <p className="text-sm text-gray-600">المنتجات: {order.items.map((i: any) => i.name).join(', ')}</p>
                     <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} د.ج</p>
                   </div>
                   <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">قيد الانتظار</span>
-                </key>
+                </div>
               ))}
             </div>
           </div>
