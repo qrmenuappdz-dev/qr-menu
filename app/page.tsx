@@ -65,6 +65,7 @@ function MainApp() {
             if (resData.status !== 'active') {
               alert("حسابك قيد المراجعة أو في انتظار تأكيد الدفع عبر بريدي موب. يرجى التواصل مع الإدارة للتفعيل.");
               await signOut(auth);
+              setUser(null);
               setCurrentRestaurantData(null);
               setActiveTab('owner');
               return;
@@ -81,6 +82,7 @@ function MainApp() {
               if (resData.status !== 'active') {
                 alert("حسابك قيد المراجعة أو في انتظار تأكيد الدفع عبر بريدي موب. يرجى التواصل مع الإدارة للتفعيل.");
                 await signOut(auth);
+                setUser(null);
                 setCurrentRestaurantData(null);
                 setActiveTab('owner');
                 return;
@@ -162,10 +164,11 @@ function MainApp() {
     e.preventDefault();
     try {
       if (isRegistering) {
+        // 1. إنشاء الحساب في Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
 
-        // تسجيل المطعم بحالة 'pending' (قيد الانتظار لحين الدفع عبر بريدي موب)
+        // 2. تسجيل المطعم بحالة 'pending' حصرياً لكي لا يدخل مباشرة
         await setDoc(doc(db, "restaurants", newUser.uid), {
           name: restaurantNameInput,
           ownerEmail: email,
@@ -175,9 +178,15 @@ function MainApp() {
           createdAt: Date.now()
         });
 
-        alert("تم إرسال طلبك بنجاح! يرجى التواصل معنا وتأكيد الدفع عبر بريدي موب لتفعيل حسابك.");
-        setIsRegistering(false);
+        // 3. إجبار الحساب الجديد على الخروج فوراً لكي ينتظر موافقة الأدمن
         await signOut(auth);
+        setUser(null);
+        
+        alert("تم إرسال طلبك بنجاح! حسابك الآن قيد الانتظار، يرجى التواصل معنا وتأكيد الدفع عبر بريدي موب لتفعيل حسابك.");
+        setIsRegistering(false);
+        setEmail('');
+        setPassword('');
+        setRestaurantNameInput('');
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -572,14 +581,14 @@ function MainApp() {
             <h2 className="text-xl font-bold mb-4">الطلبات الواردة لطاولاتك ({orders.length})</h2>
             <div className="space-y-3">
               {orders.map(order => (
-                <div key={order.id} className="border p-4 rounded-lg bg-gray-50 flex justify-between items-center">
+                <key={order.id} className="border p-4 rounded-lg bg-gray-50 flex justify-between items-center">
                   <div>
                     <p className="font-bold">طاولة رقم: {order.tableNumber}</p>
                     <p className="text-sm text-gray-600">المنتجات: {order.items.map((i: any) => i.name).join(', ')}</p>
                     <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} د.ج</p>
                   </div>
                   <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">قيد الانتظار</span>
-                </div>
+                </key>
               ))}
             </div>
           </div>
