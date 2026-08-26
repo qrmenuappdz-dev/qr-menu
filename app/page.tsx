@@ -44,7 +44,7 @@ function MainApp() {
   const [desc, setDesc] = useState('');
   const [category, setCategory] = useState('أطباق رئيسية');
   const [imageFile, setImageFile] = useState<string | null>(null);
-  const [isAvailable, setIsAvailable] = useState(true); // خيار متوفر أو نافذ
+  const [isAvailable, setIsAvailable] = useState(true);
 
   // Custom Categories for Restaurant
   const [customCategories, setCustomCategories] = useState<string[]>(['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات']);
@@ -348,7 +348,7 @@ function MainApp() {
         items: cart,
         totalPrice: calculateTotal(),
         tableNumber,
-        status: 'pending',
+        status: 'pending', // pending = قيد الانتظار, delivered = تم التوصيل
         createdAt: Date.now()
       });
       setCart([]);
@@ -359,11 +359,20 @@ function MainApp() {
     }
   };
 
+  // دالة لتغيير حالة الطلب إلى "تم التوصيل"
+  const handleMarkAsDelivered = async (orderId: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'delivered' ? 'pending' : 'delivered';
+      await updateDoc(doc(db, "orders", orderId), { status: newStatus });
+    } catch (e: any) {
+      alert("خطأ: " + e.message);
+    }
+  };
+
   const activeResForCustomer = restaurants.find(r => r.id === selectedRestaurantId) || currentRestaurantData;
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-800 p-4" dir="rtl">
-      {/* تنسيق خاص للطباعة لإظهار QR Code فقط */}
       <style jsx global>{`
         @media print {
           body * {
@@ -382,7 +391,6 @@ function MainApp() {
             border: none !important;
             box-shadow: none !important;
           }
-          /* إخفاء زر الطباعة نفسه أثناء الطباعة الفعلية */
           #print-btn {
             display: none !important;
           }
@@ -640,16 +648,29 @@ function MainApp() {
           <div className="bg-white p-6 rounded-xl shadow border">
             <h2 className="text-xl font-bold mb-4">الطلبات الواردة لطاولاتك ({orders.length})</h2>
             <div className="space-y-3">
-              {orders.map(order => (
-                <div key={order.id} className="border p-4 rounded-lg bg-gray-50 flex justify-between items-center">
-                  <div>
-                    <p className="font-bold">طاولة رقم: {order.tableNumber}</p>
-                    <p className="text-sm text-gray-600">المنتجات: {order.items.map((i: any) => i.name).join(', ')}</p>
-                    <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} DA</p>
+              {orders.map(order => {
+                const isDelivered = order.status === 'delivered';
+                return (
+                  <div key={order.id} className={`border p-4 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${isDelivered ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
+                    <div>
+                      <p className="font-bold text-lg">طاولة رقم: {order.tableNumber}</p>
+                      <p className="text-sm text-gray-600">المنتجات: {order.items.map((i: any) => i.name).join(', ')}</p>
+                      <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} DA</p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${isDelivered ? 'bg-green-200 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                        {isDelivered ? 'تم التوصيل للزبون ✅' : 'قيد الانتظار ⏳'}
+                      </span>
+                      <button 
+                        onClick={() => handleMarkAsDelivered(order.id, order.status)} 
+                        className={`px-4 py-2 rounded-lg text-xs font-bold text-white ${isDelivered ? 'bg-gray-500 hover:bg-gray-600' : 'bg-green-600 hover:bg-green-700'}`}
+                      >
+                        {isDelivered ? 'إعادة كقيد الانتظار' : 'تم التوصيل (هبط الطبق) 🍽️'}
+                      </button>
+                    </div>
                   </div>
-                  <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">قيد الانتظار</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
