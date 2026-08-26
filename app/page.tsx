@@ -44,7 +44,7 @@ function MainApp() {
   const [desc, setDesc] = useState('');
   const [category, setCategory] = useState('أطباق رئيسية');
   const [imageFile, setImageFile] = useState<string | null>(null);
-  const [isAvailable, setIsAvailable] = useState(true); // <--- خيار متوفر أو نافذ
+  const [isAvailable, setIsAvailable] = useState(true); // خيار متوفر أو نافذ
 
   // Custom Categories for Restaurant
   const [customCategories, setCustomCategories] = useState<string[]>(['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات']);
@@ -281,7 +281,7 @@ function MainApp() {
         desc,
         category,
         imageFile: imageFile || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
-        isAvailable: isAvailable, // حفظ حالة التوفر (متوفر / نافذ)
+        isAvailable: isAvailable, 
         updatedAt: Date.now()
       };
 
@@ -363,6 +363,32 @@ function MainApp() {
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-800 p-4" dir="rtl">
+      {/* تنسيق خاص للطباعة لإظهار QR Code فقط */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #qr-section, #qr-section * {
+            visibility: visible;
+          }
+          #qr-section {
+            position: absolute;
+            left: 50%;
+            top: 40px;
+            transform: translateX(-50%);
+            width: 100%;
+            text-align: center;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          /* إخفاء زر الطباعة نفسه أثناء الطباعة الفعلية */
+          #print-btn {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       <nav className="flex justify-between items-center bg-white p-4 shadow rounded-xl mb-6">
         <h1 className="text-xl font-bold text-orange-600">
           {activeResForCustomer && restaurantParam ? activeResForCustomer.name : 'منيو المطاعم الرقمي'}
@@ -530,15 +556,15 @@ function MainApp() {
       {activeTab === 'owner' && user && user.email !== ADMIN_EMAIL && (
         <div className="space-y-6 max-w-4xl mx-auto">
           {currentRestaurantData && (
-            <div className="bg-white p-6 rounded-xl shadow border flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div id="qr-section" className="bg-white p-6 rounded-xl shadow border flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-orange-600 mb-1">مرحباً بك في لوحة تحكم: {currentRestaurantData.name}</h2>
                 <p className="text-sm text-gray-500 mb-4">هذا هو رمز الاستجابة السريعة (QR Code) الخاص بمطعمك حصرياً. قم بطباعته ووضعه على الطاولات.</p>
-                <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">🖨️ طباعة الـ QR Code</button>
+                <button id="print-btn" onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">🖨️ طباعة الـ QR Code</button>
               </div>
               <div className="bg-white p-4 border rounded-xl shadow-inner flex flex-col items-center">
                 <QRCodeSVG value={`${window.location.origin}/?restaurant=${currentRestaurantData.id}`} size={140} />
-                <span className="text-xs text-gray-400 mt-2">{currentRestaurantData.name}</span>
+                <span className="text-xs text-gray-500 mt-2 font-bold">{currentRestaurantData.name}</span>
               </div>
             </div>
           )}
@@ -555,7 +581,6 @@ function MainApp() {
                 {customCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
               
-              {/* خيار متوفر / نافذ */}
               <div className="col-span-full flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
                 <input 
                   type="checkbox" 
