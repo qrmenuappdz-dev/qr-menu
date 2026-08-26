@@ -57,18 +57,37 @@ function MainApp() {
         if (currentUser.email === ADMIN_EMAIL) {
           setActiveTab('admin');
         } else {
-          setActiveTab('owner');
+          // التحقق من بيانات المطعم وحالته
           let resDoc = await getDoc(doc(db, "restaurants", currentUser.uid));
           if (resDoc.exists()) {
-            setCurrentRestaurantData({ id: resDoc.id, ...resDoc.data() });
+            const resData = resDoc.data();
+            // فحص هل الحساب مفعل أم في الانتظار
+            if (resData.status !== 'active') {
+              alert("حسابك قيد المراجعة أو في انتظار تأكيد الدفع عبر بريدي موب. يرجى التواصل مع الإدارة للتفعيل.");
+              await signOut(auth);
+              setCurrentRestaurantData(null);
+              setActiveTab('owner');
+              return;
+            }
+            setCurrentRestaurantData({ id: resDoc.id, ...resData });
             if (!restaurantParam) setSelectedRestaurantId(resDoc.id);
+            setActiveTab('owner');
           } else {
             const q = query(collection(db, "restaurants"), where("ownerEmail", "==", currentUser.email));
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty) {
               const docData = querySnapshot.docs[0];
-              setCurrentRestaurantData({ id: docData.id, ...docData.data() });
+              const resData = docData.data();
+              if (resData.status !== 'active') {
+                alert("حسابك قيد المراجعة أو في انتظار تأكيد الدفع عبر بريدي موب. يرجى التواصل مع الإدارة للتفعيل.");
+                await signOut(auth);
+                setCurrentRestaurantData(null);
+                setActiveTab('owner');
+                return;
+              }
+              setCurrentRestaurantData({ id: docData.id, ...resData });
               if (!restaurantParam) setSelectedRestaurantId(docData.id);
+              setActiveTab('owner');
             }
           }
         }
@@ -146,18 +165,21 @@ function MainApp() {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
 
+        // تسجيل المطعم بحالة 'pending' (قيد الانتظار لحين الدفع عبر بريدي موب)
         await setDoc(doc(db, "restaurants", newUser.uid), {
           name: restaurantNameInput,
           ownerEmail: email,
           isOrderingActive: true,
+          status: 'pending', 
           categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
           createdAt: Date.now()
         });
 
-        alert("تم إنشاء حساب المطعم بنجاح!");
+        alert("تم إرسال طلبك بنجاح! يرجى التواصل معنا وتأكيد الدفع عبر بريدي موب لتفعيل حسابك.");
+        setIsRegistering(false);
+        await signOut(auth);
       } else {
         await signInWithEmailAndPassword(auth, email, password);
-        alert("تم تسجيل الدخول بنجاح!");
       }
       fetchRestaurants();
     } catch (error: any) {
@@ -178,6 +200,7 @@ function MainApp() {
         name: newRestaurantName,
         ownerEmail: ownerEmailForRes,
         isOrderingActive: true,
+        status: 'active', // الأدمين يضيفه مباشرة كمفعل
         categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
         createdAt: Date.now()
       });
@@ -187,6 +210,17 @@ function MainApp() {
       alert("تمت إضافة المطعم بنجاح!");
     } catch (e: any) {
       alert("خطأ: " + e.message);
+    }
+  };
+
+  // دالة تفعيل المطعم بعد الدفع عبر بريدي موب
+  const handleApproveRestaurant = async (restaurantId: string) => {
+    try {
+      await updateDoc(doc(db, "restaurants", restaurantId), { status: 'active' });
+      fetchRestaurants();
+      alert("تم تفعيل حساب المطعم بنجاح!");
+    } catch (e: any) {
+      alert("خطأ في التفعيل: " + e.message);
     }
   };
 
@@ -347,11 +381,11 @@ function MainApp() {
       {activeTab === 'admin' && user?.email === ADMIN_EMAIL && (
         <div className="space-y-6 max-w-4xl mx-auto">
           <div className="bg-white p-6 rounded-xl shadow border">
-            <h2 className="text-xl font-bold mb-4 text-purple-700">إضافة مطعم جديد للمنصة</h2>
+            <h2 className="text-xl font-bold mb-4 text-purple-700">إضافة مطعم جديد مباشرة</h2>
             <form onSubmit={handleAddRestaurantByAdmin} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input type="text" placeholder="اسم المطعم" value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} className="border p-2 rounded-lg" required />
               <input type="email" placeholder="البريد الإلكتروني لصاحب المطعم" value={ownerEmailForRes} onChange={(e) => setOwnerEmailForRes(e.target.value)} className="border p-2 rounded-lg" required />
-              <button type="submit" className="bg-purple-600 text-white p-2 rounded-lg col-span-full font-bold">تسجيل المطعم</button>
+              <button type="submit" className="bg-purple-600 text-white p-2 rounded-lg col-span-full font-bold">تسجيل وموافقة مباشرة</button>
             </form>
           </div>
 
@@ -363,11 +397,18 @@ function MainApp() {
                   <div>
                     <h3 className="font-bold text-lg text-orange-600">{res.name}</h3>
                     <p className="text-xs text-gray-500">المالك: {res.ownerEmail || 'غير محدد'}</p>
-                    <p className="text-xs mt-1">حالة الطلب: <span className={`font-bold ${res.isOrderingActive !== false ? 'text-green-600' : 'text-red-600'}`}>{res.isOrderingActive !== false ? 'مفعل' : 'متوقف'}</span></p>
+                    <p className="text-xs mt-1">
+                      حالة الحساب: <span className={`font-bold ${res.status === 'active' ? 'text-green-600' : 'text-yellow-600'}`}>{res.status === 'active' ? 'مفعل ✅' : 'قيد الانتظار (في انتظار الدفع) ⏳'}</span>
+                    </p>
                   </div>
                   <div className="flex gap-2 flex-wrap">
+                    {res.status !== 'active' && (
+                      <button onClick={() => handleApproveRestaurant(res.id)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+                        تفعيل الحساب (تأكيد الدفع)
+                      </button>
+                    )}
                     <button onClick={() => toggleRestaurantOrdering(res.id, res.isOrderingActive !== false)} className={`px-3 py-1.5 rounded-lg text-xs font-bold text-white ${res.isOrderingActive !== false ? 'bg-yellow-600' : 'bg-green-600'}`}>
-                      {res.isOrderingActive !== false ? 'إيقاف' : 'تفعيل'}
+                      {res.isOrderingActive !== false ? 'إيقاف الطلب' : 'تفعيل الطلب'}
                     </button>
                     <button onClick={() => { setSelectedRestaurantId(res.id); setActiveTab('customer'); }} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">عرض المنيو</button>
                     <button onClick={() => handleDeleteRestaurant(res.id)} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">حذف</button>
@@ -381,7 +422,6 @@ function MainApp() {
 
       {activeTab === 'customer' && (
         <div>
-          {/* واجهة ترحيبية عامة في حال لم يتم مسح الرمز أو الدخول عبر رابط مطعم */}
           {!restaurantParam && user?.email !== ADMIN_EMAIL && !currentRestaurantData ? (
             <div className="max-w-xl mx-auto text-center bg-white p-10 rounded-2xl shadow border mt-20">
               <h2 className="text-3xl font-bold text-orange-600 mb-4">مرحباً بك في منصة المنيو الرقمي 🍽️</h2>
@@ -389,7 +429,7 @@ function MainApp() {
                 هذه المنصة مخصصة لتقديم قوائم الطعام الإلكترونية. لعرض منيو أي مطعم، يرجى مسح رمز الاستجابة السريعة (QR Code) الموجود على الطاولة.
               </p>
               <div className="p-4 bg-orange-50 rounded-xl border border-orange-200 text-orange-800 text-sm">
-                هل أنت صاحب مطعم؟ يمكنك تسجيل الدخول من الزاوية العلوية لإدارة منيو مطعمك واستخراج الـ QR الخاص بك.
+                هل أنت صاحب مطعم؟ يمكنك تسجيل الحساب الجديد أو تسجيل الدخول من الزاوية العلوية.
               </div>
             </div>
           ) : (
@@ -454,7 +494,7 @@ function MainApp() {
             <input type="email" placeholder="البريد الإلكتروني" value={email} onChange={(e) => setEmail(e.target.value)} className="border p-2 rounded-lg" required />
             <input type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} className="border p-2 rounded-lg" required />
             <button type="submit" className="bg-orange-600 text-white p-2 rounded-lg font-bold">
-              {isRegistering ? 'تسجيل المطعم وإنشاء الحساب' : 'دخول'}
+              {isRegistering ? 'تسجيل المطعم وإرسال طلب الاشتراك' : 'دخول'}
             </button>
             <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-sm text-blue-600 mt-2 underline">
               {isRegistering ? 'لديك حساب بالفعل؟ سجل الدخول هنا' : 'لا تملك حساباً؟ أنشئ مطعماً جديداً الآن'}
