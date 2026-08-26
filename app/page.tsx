@@ -18,7 +18,7 @@ function MainApp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [restaurantNameInput, setRestaurantNameInput] = useState('');
-  const [phoneInput, setPhoneInput] = useState(''); // <--- خانة رقم الهاتف الجديدة
+  const [phoneInput, setPhoneInput] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
   // App Data
@@ -44,6 +44,7 @@ function MainApp() {
   const [desc, setDesc] = useState('');
   const [category, setCategory] = useState('أطباق رئيسية');
   const [imageFile, setImageFile] = useState<string | null>(null);
+  const [isAvailable, setIsAvailable] = useState(true); // <--- خيار متوفر أو نافذ
 
   // Custom Categories for Restaurant
   const [customCategories, setCustomCategories] = useState<string[]>(['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات']);
@@ -58,11 +59,9 @@ function MainApp() {
         if (currentUser.email === ADMIN_EMAIL) {
           setActiveTab('admin');
         } else {
-          // التحقق من بيانات المطعم وحالته
           let resDoc = await getDoc(doc(db, "restaurants", currentUser.uid));
           if (resDoc.exists()) {
             const resData = resDoc.data();
-            // فحص هل الحساب مفعل أم في الانتظار
             if (resData.status !== 'active') {
               alert("حسابك قيد المراجعة أو في انتظار تأكيد الدفع عبر بريدي موب. يرجى التواصل مع الإدارة للتفعيل.");
               await signOut(auth);
@@ -165,22 +164,19 @@ function MainApp() {
     e.preventDefault();
     try {
       if (isRegistering) {
-        // 1. إنشاء الحساب في Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = userCredential.user;
 
-        // 2. تسجيل المطعم بحالة 'pending' مع حفظ رقم الهاتف
         await setDoc(doc(db, "restaurants", newUser.uid), {
           name: restaurantNameInput,
           ownerEmail: email,
-          phone: phoneInput, // <--- حفظ رقم الهاتف في قاعدة البيانات
+          phone: phoneInput,
           isOrderingActive: true,
           status: 'pending', 
           categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
           createdAt: Date.now()
         });
 
-        // 3. إجبار الحساب الجديد على الخروج فوراً ليطابق رغبتك في عدم الدخول المباشر
         await signOut(auth);
         setUser(null);
         
@@ -213,7 +209,7 @@ function MainApp() {
         ownerEmail: ownerEmailForRes,
         phone: '',
         isOrderingActive: true,
-        status: 'active', // الأدمين يضيفه مباشرة كمفعل
+        status: 'active',
         categories: ['أطباق رئيسية', 'مقبلات', 'مشروبات', 'حلويات'],
         createdAt: Date.now()
       });
@@ -226,7 +222,6 @@ function MainApp() {
     }
   };
 
-  // دالة تفعيل المطعم بعد الدفع عبر بريدي موب
   const handleApproveRestaurant = async (restaurantId: string) => {
     try {
       await updateDoc(doc(db, "restaurants", restaurantId), { status: 'active' });
@@ -286,25 +281,25 @@ function MainApp() {
         desc,
         category,
         imageFile: imageFile || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+        isAvailable: isAvailable, // حفظ حالة التوفر (متوفر / نافذ)
         updatedAt: Date.now()
       };
 
       if (editingDishId) {
         await updateDoc(doc(db, "dishes", editingDishId), dishData);
-        alert("تم تعديل الطبق بنجاح!");
         setEditingDishId(null);
       } else {
         await addDoc(collection(db, "dishes"), {
           ...dishData,
           createdAt: Date.now()
         });
-        alert("تمت إضافة الطبق بنجاح!");
       }
 
       setName('');
       setPrice('');
       setDesc('');
       setImageFile(null);
+      setIsAvailable(true);
     } catch (e: any) {
       alert("خطأ: " + e.message);
     }
@@ -317,13 +312,13 @@ function MainApp() {
     setDesc(dish.desc);
     setCategory(dish.category);
     setImageFile(dish.imageFile);
+    setIsAvailable(dish.isAvailable !== false);
   };
 
   const handleDeleteDish = async (dishId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذا الطبق؟")) return;
     try {
       await deleteDoc(doc(db, "dishes", dishId));
-      alert("تم حذف الطبق بنجاح!");
     } catch (e: any) {
       alert("خطأ في الحذف: " + e.message);
     }
@@ -410,7 +405,6 @@ function MainApp() {
                   <div>
                     <h3 className="font-bold text-lg text-orange-600">{res.name}</h3>
                     <p className="text-xs text-gray-500">المالك: {res.ownerEmail || 'غير محدد'}</p>
-                    {/* عرض رقم الهاتف وزر مراسلة واتساب */}
                     <p className="text-xs text-gray-700 font-bold mt-1">
                       الهاتف: <a href={`tel:${res.phone}`} className="text-blue-600 underline">{res.phone || 'غير مسجل'}</a>
                       {res.phone && (
@@ -450,9 +444,6 @@ function MainApp() {
               <p className="text-gray-600 mb-6 text-lg">
                 هذه المنصة مخصصة لتقديم قوائم الطعام الإلكترونية. لعرض منيو أي مطعم، يرجى مسح رمز الاستجابة السريعة (QR Code) الموجود على الطاولة.
               </p>
-              <div className="p-4 bg-orange-50 rounded-xl border border-orange-200 text-orange-800 text-sm">
-                هل أنت صاحب مطعم؟ يمكنك تسجيل الحساب الجديد أو تسجيل الدخول من الزاوية العلوية.
-              </div>
             </div>
           ) : (
             <div>
@@ -472,19 +463,27 @@ function MainApp() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pb-28">
                 {dishes
                   .filter(d => selectedCategory === 'الكل' || d.category === selectedCategory)
-                  .map(dish => (
-                    <div key={dish.id} className="bg-white p-4 rounded-xl shadow border">
-                      <img src={dish.imageFile} alt={dish.name} className="w-full h-40 object-cover rounded-lg mb-3" />
-                      <h3 className="font-bold text-lg">{dish.name}</h3>
-                      <p className="text-gray-500 text-sm mb-2">{dish.desc}</p>
-                      <div className="flex justify-between items-center mt-4">
-                        <span className="text-orange-600 font-bold">{dish.price} د.ج</span>
-                        {activeResForCustomer?.isOrderingActive !== false && (
-                          <button onClick={() => setCart([...cart, dish])} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm">إضافة للطلب +</button>
+                  .map(dish => {
+                    const isAvailable = dish.isAvailable !== false;
+                    return (
+                      <div key={dish.id} className={`bg-white p-4 rounded-xl shadow border relative ${!isAvailable ? 'opacity-70 bg-gray-100' : ''}`}>
+                        {!isAvailable && (
+                          <div className="absolute top-4 left-4 bg-red-600 text-white text-xs px-2 py-1 rounded-md font-bold z-10">
+                            نفذت الكمية ❌
+                          </div>
                         )}
+                        <img src={dish.imageFile} alt={dish.name} className="w-full h-40 object-cover rounded-lg mb-3" />
+                        <h3 className="font-bold text-lg">{dish.name}</h3>
+                        <p className="text-gray-500 text-sm mb-2">{dish.desc}</p>
+                        <div className="flex justify-between items-center mt-4">
+                          <span className="text-orange-600 font-bold">{dish.price} DA</span>
+                          {activeResForCustomer?.isOrderingActive !== false && isAvailable && (
+                            <button onClick={() => setCart([...cart, dish])} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm">إضافة للطلب +</button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                ))}
+                    );
+                })}
               </div>
 
               {cart.length > 0 && activeResForCustomer?.isOrderingActive !== false && (
@@ -492,10 +491,10 @@ function MainApp() {
                   <div className="max-w-xl mx-auto flex flex-col gap-2">
                     <div className="flex justify-between items-center font-bold text-md">
                       <span>سلة الطلبات ({cart.length} منتجات)</span>
-                      <span className="text-orange-600">المجموع: {calculateTotal()} د.ج</span>
+                      <span className="text-orange-600">المجموع: {calculateTotal()} DA</span>
                     </div>
                     <input type="text" placeholder="رقم الطاولة (مثال: 05)" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="border p-2 rounded-lg text-sm" />
-                    <button onClick={handleSendOrder} className="bg-green-600 text-white p-2 rounded-lg font-bold">تأكيد وإرسال الطلب ({calculateTotal()} د.ج)</button>
+                    <button onClick={handleSendOrder} className="bg-green-600 text-white p-2 rounded-lg font-bold">تأكيد وإرسال الطلب ({calculateTotal()} DA)</button>
                   </div>
                 </div>
               )}
@@ -550,12 +549,26 @@ function MainApp() {
             </h2>
             <form onSubmit={handleSaveDish} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input type="text" placeholder="اسم الطبق" value={name} onChange={(e) => setName(e.target.value)} className="border p-2 rounded-lg" required />
-              <input type="number" placeholder="السعر (د.ج)" value={price} onChange={(e) => setPrice(e.target.value)} className="border p-2 rounded-lg" required />
+              <input type="number" placeholder="السعر (DA)" value={price} onChange={(e) => setPrice(e.target.value)} className="border p-2 rounded-lg" required />
               <input type="text" placeholder="الوصف" value={desc} onChange={(e) => setDesc(e.target.value)} className="border p-2 rounded-lg" />
               <select value={category} onChange={(e) => setCategory(e.target.value)} className="border p-2 rounded-lg">
                 {customCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
               
+              {/* خيار متوفر / نافذ */}
+              <div className="col-span-full flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
+                <input 
+                  type="checkbox" 
+                  id="isAvailableCheck" 
+                  checked={isAvailable} 
+                  onChange={(e) => setIsAvailable(e.target.checked)} 
+                  className="w-5 h-5 text-orange-600 rounded"
+                />
+                <label htmlFor="isAvailableCheck" className="text-sm font-bold cursor-pointer">
+                  الطبق متوفر حالياً (إذا أزلته سيظهر للزبائن أنه "نافذ")
+                </label>
+              </div>
+
               <div className="col-span-full border border-dashed border-gray-400 p-3 rounded-lg flex flex-col items-center justify-center gap-2 bg-gray-50">
                 <span className="text-xs text-gray-600 font-bold">صورة الطبق (اختر من المعرض أو صور مباشرة بالكاميرا 📷):</span>
                 <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="text-xs" />
@@ -565,7 +578,7 @@ function MainApp() {
               <div className="col-span-full flex gap-2">
                 <button type="submit" className="flex-1 bg-orange-600 text-white p-2 rounded-lg font-bold">{editingDishId ? 'حفظ التعديلات' : 'إضافة الطبق للقائمة'}</button>
                 {editingDishId && (
-                  <button type="button" onClick={() => { setEditingDishId(null); setName(''); setPrice(''); setDesc(''); setImageFile(null); }} className="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold">إلغاء</button>
+                  <button type="button" onClick={() => { setEditingDishId(null); setName(''); setPrice(''); setDesc(''); setImageFile(null); setIsAvailable(true); }} className="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold">إلغاء</button>
                 )}
               </div>
             </form>
@@ -574,22 +587,28 @@ function MainApp() {
           <div className="bg-white p-6 rounded-xl shadow border">
             <h2 className="text-xl font-bold mb-4">قائمة أطباق مطعمك ({dishes.length})</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {dishes.map(dish => (
-                <div key={dish.id} className="border p-3 rounded-xl bg-gray-50 flex gap-3 items-center justify-between">
-                  <div className="flex gap-3 items-center">
-                    <img src={dish.imageFile} alt={dish.name} className="w-16 h-16 object-cover rounded-lg" />
-                    <div>
-                      <h4 className="font-bold">{dish.name}</h4>
-                      <p className="text-xs text-gray-500">{dish.category}</p>
-                      <p className="text-sm font-bold text-orange-600">{dish.price} د.ج</p>
+              {dishes.map(dish => {
+                const isAvailable = dish.isAvailable !== false;
+                return (
+                  <div key={dish.id} className="border p-3 rounded-xl bg-gray-50 flex gap-3 items-center justify-between">
+                    <div className="flex gap-3 items-center">
+                      <img src={dish.imageFile} alt={dish.name} className="w-16 h-16 object-cover rounded-lg" />
+                      <div>
+                        <h4 className="font-bold">{dish.name}</h4>
+                        <p className="text-xs text-gray-500">{dish.category}</p>
+                        <p className="text-sm font-bold text-orange-600">{dish.price} DA</p>
+                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {isAvailable ? 'متوفر' : 'نافذ ❌'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => startEditingDish(dish)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold">تعديل</button>
+                      <button onClick={() => handleDeleteDish(dish.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold">حذف</button>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => startEditingDish(dish)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold">تعديل</button>
-                    <button onClick={() => handleDeleteDish(dish.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold">حذف</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -601,7 +620,7 @@ function MainApp() {
                   <div>
                     <p className="font-bold">طاولة رقم: {order.tableNumber}</p>
                     <p className="text-sm text-gray-600">المنتجات: {order.items.map((i: any) => i.name).join(', ')}</p>
-                    <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} د.ج</p>
+                    <p className="text-sm font-bold text-orange-600 mt-1">المجموع: {order.totalPrice || order.items.reduce((sum: number, i: any) => sum + Number(i.price), 0)} DA</p>
                   </div>
                   <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold">قيد الانتظار</span>
                 </div>
