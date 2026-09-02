@@ -1,0 +1,21 @@
+{
+  "name": "منيو المطاعم الرقمي",
+  "short_name": "منيو المطعم",
+  "description": "تطبيق إدارة المطاعم والطلبات",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ea580c",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
